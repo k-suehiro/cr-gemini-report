@@ -38,6 +38,15 @@ function refreshDashboardCache() {
   const cacheSheet = ss.getSheetByName('DashboardCache') || ss.insertSheet('DashboardCache');
   const EXTERNAL_DB_ID = '1Q9Qdk7K1t_L0KcI0I_J7W62fFHO8i4SW9IZ1jb6L4-k';
   
+  const EXCLUDE_DEPT_SET = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他', '環境分科委員会', '品質保証室', 'サポート窓口']);
+  const EXCLUDE_NAME_SET = new Set([
+    'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
+    '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
+    'information IR', 'Media storage CR', 'Channel CRESTEC',
+    'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
+    '会議室タブレットGAS管理'
+  ]);
+
   const empMap = {};
   try {
     const accountListSheet = SpreadsheetApp.openById(EXTERNAL_DB_ID).getSheetByName('アカウントリスト');
@@ -46,7 +55,11 @@ function refreshDashboardCache() {
     const emailIdx = headers.indexOf('メールアドレス'), nameIdx = headers.indexOf('名前'), iconIdx = headers.indexOf('アイコンURL'), deptIdx = headers.indexOf('所属');
     for (let i = 1; i < empData.length; i++) {
       const email = String(empData[i][emailIdx] || "").toLowerCase().trim();
-      if (email) empMap[email] = { name: empData[i][nameIdx], icon: empData[i][iconIdx], dept: empData[i][deptIdx] };
+      const name = String(empData[i][nameIdx] || "");
+      const dept = String(empData[i][deptIdx] || "");
+      if (email && !EXCLUDE_NAME_SET.has(name) && !EXCLUDE_DEPT_SET.has(dept)) {
+        empMap[email] = { name: name, icon: empData[i][iconIdx], dept: dept };
+      }
     }
   } catch(e) { console.error("社員DB取得失敗: " + e.message); }
 
@@ -86,7 +99,7 @@ function refreshDashboardCache() {
     });
   }
 
-  const usageCounts = Object.values(userStats).map(s => s.total).sort((a, b) => b - a);
+  const usageCounts = Object.keys(empMap).map(email => userStats[email] ? userStats[email].total : 0).sort((a, b) => b - a);
   const top10Threshold = usageCounts.length > 0 ? usageCounts[Math.floor(usageCounts.length * 0.1)] : 999;
   const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App'];
 
