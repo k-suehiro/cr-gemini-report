@@ -38,13 +38,13 @@ function refreshDashboardCache() {
   const cacheSheet = ss.getSheetByName('DashboardCache') || ss.insertSheet('DashboardCache');
   const EXTERNAL_DB_ID = '1Q9Qdk7K1t_L0KcI0I_J7W62fFHO8i4SW9IZ1jb6L4-k';
   
-  const EXCLUDE_DEPT_SET = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他', '環境分科委員会', '品質保証室', 'サポート窓口']);
+  const EXCLUDE_DEPT_SET = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他']);
   const EXCLUDE_NAME_SET = new Set([
     'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
     '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
     'information IR', 'Media storage CR', 'Channel CRESTEC',
     'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
-    '会議室タブレットGAS管理'
+    '会議室タブレットGAS管理', '環境分科委員会', '品質保証室', 'サポート窓口'
   ]);
 
   const empMap = {};

@@ -165,13 +165,13 @@
         const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App'];
         const FA_ICONS = { 'Gmail':'fa-solid fa-envelope', 'Google ドキュメント':'fa-solid fa-file-lines', 'Google スプレッドシート':'fa-solid fa-table', 'Google スライド':'fa-solid fa-desktop', 'Google ドライブ':'fa-brands fa-google-drive', 'Google Meet':'fa-solid fa-video', 'Studio':'fa-solid fa-microphone', 'Google Vids':'fa-solid fa-film', 'Gemini App':'fa-solid fa-wand-magic-sparkles' };
 
-        const EXCLUDE_DEPTS = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他', '環境分科委員会', '品質保証室', 'サポート窓口']);
+        const EXCLUDE_DEPTS = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他']);
         const EXCLUDE_NAMES = new Set([
             'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
             '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
             'information IR', 'Media storage CR', 'Channel CRESTEC',
             'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
-            '会議室タブレットGAS管理'
+            '会議室タブレットGAS管理', '環境分科委員会', '品質保証室', 'サポート窓口'
         ]);
         function shortDeptName(dept) {
             return dept.replace('プロダクションセンター', 'CRP');
