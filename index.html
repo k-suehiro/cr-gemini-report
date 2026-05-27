@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Gemini 利用状況ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .animate-bar { animation: slideRight 1s ease-out forwards; }
+        @keyframes slideRight { from { width: 0; } }
+        .pie-chart-container { position: relative; width: 450px; height: 450px; display: flex; align-items: center; justify-content: center; }
+        .pie-chart { width: 100%; height: 100%; border-radius: 50%; position: absolute; top: 0; left: 0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+        .pie-center { width: 300px; height: 300px; background: white; border-radius: 50%; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: inset 0 2px 10px rgba(0,0,0,0.08); }
+        .sortable { cursor: pointer; user-select: none; transition: background 0.2s; }
+        .sortable:hover { background-color: #f8fafc; }
+        .page-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid #e2e8f0; background: white; font-size: 0.875rem; transition: all 0.2s; }
+        .page-btn:hover:not(:disabled) { background: #f1f5f9; }
+        .page-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+        #ring-labels div { pointer-events: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <div id="loading-view" class="flex flex-col items-center justify-center min-h-screen">
+        <div class="text-blue-600 mb-4 text-4xl"><i class="fa-solid fa-spinner fa-spin"></i></div>
+        <p id="loading-text" class="text-slate-500 font-medium">データを読み込み中...</p>
+    </div>
+
+    <div id="dashboard-view" class="hidden max-w-7xl mx-auto px-4 py-8">
+        <header class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+            <div>
+              <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                  <i class="fa-solid fa-wand-magic-sparkles text-blue-600"></i> Gemini 利用状況 (直近28日間)
+              </h1>
+              <p id="last-update" class="text-[10px] text-slate-400 mt-1"></p>
+            </div>
+            <button onclick="loadData()" class="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition">
+                <i class="fa-solid fa-rotate-right mr-2 text-slate-400"></i> キャッシュを読込
+            </button>
+        </header>
+
+        <div class="bg-blue-600 rounded-2xl p-6 mb-8 text-white shadow-lg shadow-blue-200 relative overflow-hidden">
+            <i class="fa-solid fa-circle-info absolute right-[-20px] bottom-[-20px] text-[12rem] text-white/10 rotate-12"></i>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 relative z-10">
+                <h3 class="text-lg font-bold flex items-center gap-2"><i class="fa-solid fa-circle-question"></i> このダッシュボードの集計定義</h3>
+                <div class="bg-blue-800/40 border border-blue-400/30 px-4 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 backdrop-blur-sm">
+                    <i class="fa-regular fa-calendar-days text-blue-200"></i>
+                    <span id="period-display">集計期間: 読込中...</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-blue-50 relative z-10">
+                <div class="bg-white/10 p-5 rounded-xl h-full">
+                    <p class="font-bold text-white mb-2 underline decoration-blue-300 underline-offset-4">定着度ランキング (Top 5)</p>
+                    <p class="mb-2">合計使用日数が多い順で評価されます。※土日・休日利用もJST(日本時間)でカウントされます。</p>
+                    <ul class="space-y-1.5 text-xs list-disc pl-4 text-blue-100 font-medium">
+                        <li><b>習慣化の可視化：</b> 日々の業務に自然にAIを組み込んでいるユーザーを評価。</li>
+                        <li><b>真の生産性向上：</b> 継続的に対話・活用することで最大の効果を発揮します。</li>
+                    </ul>
+                </div>
+                <div class="bg-white/10 p-5 rounded-xl h-full">
+                    <p class="font-bold text-white mb-2 underline decoration-blue-300 underline-offset-4">活用レベルの判定 (28日間累計利用回数)</p>
+                    <p class="mb-2">AI生成・推敲などの「実行回数」で判定。20回でも十分な活用層です。</p>
+                    <ul class="space-y-1.5 text-xs list-disc pl-4 text-blue-100 font-medium">
+                        <li><b class="text-white font-bold">高レベル：</b> 20回以上、かつ全体の上位10%</li>
+                        <li><b class="text-white font-bold">中レベル：</b> 5回以上</li>
+                        <li><b class="text-white font-bold">低レベル：</b> 1〜4回</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" id="kpi-container"></div>
+        
+        <div class="mb-8">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-trophy text-yellow-500"></i> 定着率の高いトップユーザー</h2>
+            <div id="top-users-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4"></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-stretch">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col items-center overflow-hidden">
+                <h3 class="text-base font-bold text-slate-800 mb-2 self-start">使用量分布 (活用レベル)</h3>
+                <div class="pie-chart-container mt-6">
+                    <div id="usage-pie-chart" class="pie-chart shadow-lg"></div>
+                    <div id="ring-labels" class="absolute inset-0 pointer-events-none z-20"></div>
+                    <div class="pie-center">
+                        <div id="inner-legend" class="text-center w-full"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+                <h3 class="text-base font-bold text-slate-800 mb-8 self-start">アプリ別アクティブ数 (利用1回以上)</h3>
+                <div id="app-usage-container" class="space-y-5"></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <h3 class="text-lg font-bold text-slate-800">全ユーザー詳細 <span class="text-xs font-normal text-slate-400 ml-2">※名前クリックで詳細表示</span></h3>
+                <div class="flex flex-wrap items-center gap-4 text-sm">
+                    <div class="flex items-center gap-2 text-slate-500 font-medium">
+                        <span>表示件数:</span>
+                        <select id="items-per-page" onchange="handleItemsPerPageChange(this.value)" class="border border-slate-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer">
+                            <option value="30">30件</option>
+                            <option value="60">60件</option>
+                            <option value="100">100件</option>
+                            <option value="9999">すべて</option>
+                        </select>
+                    </div>
+                    <div class="relative w-full sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="table-search" placeholder="名前やメールで検索..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:border-blue-500 shadow-sm transition">
+                    </div>
+                </div>
+            </div>
+
+            <div id="dept-summary" class="px-6 py-4 border-b border-slate-100 bg-slate-50/70"></div>
+
+            <div class="overflow-x-auto overflow-y-auto h-[800px] relative w-full border-b border-slate-200">
+                <table class="w-full text-left border-collapse whitespace-nowrap relative">
+                    <thead class="bg-slate-50 text-slate-700 text-sm font-bold uppercase tracking-widest sticky top-0 z-20 shadow-[inset_0_-1px_0_#e2e8f0]">
+                        <tr>
+                            <th class="px-6 py-5 sortable bg-slate-50" onclick="handleSort('kanji')">ユーザー <span id="sort-icon-kanji" class="inline-block w-4 text-center"></span></th>
+                            <th class="px-6 py-5 text-center sortable bg-slate-50" onclick="handleSort('usage')">レベル <span id="sort-icon-usage" class="inline-block w-4 text-center"></span></th>
+                            <th class="px-6 py-5 text-right sortable bg-slate-50" onclick="handleSort('totalActions')">利用回数 <span id="sort-icon-totalActions" class="inline-block w-4 text-center"></span></th>
+                            <th class="px-6 py-5 text-right sortable bg-slate-50" onclick="handleSort('daysUsed')">使用日数 <span id="sort-icon-daysUsed" class="inline-block w-4 text-center"></span></th>
+                            <th class="px-6 py-5 text-center bg-slate-50">アプリ利用状況</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-100 text-sm"></tbody>
+                </table>
+            </div>
+
+            <div class="p-6 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div id="pagination-info" class="text-sm text-slate-500 font-medium"></div>
+                <div id="pagination-controls" class="flex items-center gap-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden">
+            <div class="bg-blue-600 p-6 text-white flex justify-between items-center">
+                <div class="flex items-center gap-4">
+                    <img id="modal-user-icon" src="" class="w-14 h-14 rounded-full border-2 border-white/30 object-cover hidden">
+                    <div id="modal-user-init" class="w-14 h-14 rounded-full bg-blue-500 border-2 border-white/30 flex items-center justify-center text-xl font-bold hidden"></div>
+                    <div>
+                        <h4 id="modal-user-name" class="text-xl font-bold"></h4>
+                        <p id="modal-user-dept" class="text-blue-100 text-xs"></p>
+                    </div>
+                </div>
+                <button onclick="closeModal()" class="text-white/80 hover:text-white transition text-2xl"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 max-h-[65vh] overflow-y-auto bg-slate-50" id="modal-content">
+                <h5 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> JST(日本時間)でのアクション履歴</h5>
+                <div id="daily-list" class="space-y-4"></div>
+            </div>
+            <div class="p-4 bg-white border-t border-slate-100 text-center">
+                <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Generated from Audit Logs (JST)</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App'];
+        const FA_ICONS = { 'Gmail':'fa-solid fa-envelope', 'Google ドキュメント':'fa-solid fa-file-lines', 'Google スプレッドシート':'fa-solid fa-table', 'Google スライド':'fa-solid fa-desktop', 'Google ドライブ':'fa-brands fa-google-drive', 'Google Meet':'fa-solid fa-video', 'Studio':'fa-solid fa-microphone', 'Google Vids':'fa-solid fa-film', 'Gemini App':'fa-solid fa-wand-magic-sparkles' };
+
+        const EXCLUDE_DEPTS = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他']);
+        const EXCLUDE_NAMES = new Set([
+            'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
+            '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
+            'information IR', 'Media storage CR', 'Channel CRESTEC',
+            'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
+            '会議室タブレットGAS管理'
+        ]);
+        function shortDeptName(dept) {
+            return dept.replace('プロダクションセンター', 'CRP');
+        }
+
+        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '' };
+
+        window.onload = () => { loadData(); };
+
+        function loadData() {
+            document.getElementById('loading-view').classList.remove('hidden');
+            document.getElementById('dashboard-view').classList.add('hidden');
+            google.script.run
+                .withSuccessHandler(res => {
+                    if (res.error) { document.getElementById('loading-text').innerHTML = `<span class="text-red-500">${res.error}</span>`; return; }
+                    const filtered = res.users.filter(u =>
+                        !EXCLUDE_NAMES.has(u.kanji) && !EXCLUDE_DEPTS.has(u.dept)
+                    );
+                    state.parsedUsers = filtered;
+                    state.filteredData = [...filtered];
+                    state.activeDept = '';
+                    if (res.updatedAt) document.getElementById('last-update').textContent = '最終集計(JST): ' + res.updatedAt;
+                    if (res.period) document.getElementById('period-display').textContent = `集計期間: ${res.period}`;
+                    applySort();
+                    renderDashboard();
+                    document.getElementById('loading-view').classList.add('hidden');
+                    document.getElementById('dashboard-view').classList.remove('hidden');
+                })
+                .withFailureHandler(err => {
+                    document.getElementById('loading-text').innerHTML = `<span class="text-red-500 font-bold">読込エラー:<br>${err.message}</span>`;
+                })
+                .getDashboardData();
+        }
+
+        function handleSort(key) {
+            if (state.sort.key === key) { state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc'; } 
+            else { state.sort.key = key; state.sort.direction = 'desc'; }
+            state.currentPage = 1;
+            applySort();
+            renderTable();
+            updateSortIcons();
+        }
+
+        function applySort() {
+            const k = state.sort.key, d = state.sort.direction === 'asc' ? 1 : -1;
+            state.filteredData.sort((a, b) => {
+                let valA = a[k], valB = b[k];
+                if (k === 'usage') {
+                    const rank = { '高': 3, '中': 2, '低': 1, 'ゼロ': 0, '未使用': 0 };
+                    valA = rank[a.daysUsed === 0 ? '未使用' : a.usage] || 0;
+                    valB = rank[b.daysUsed === 0 ? '未使用' : b.usage] || 0;
+                }
+                if (valA < valB) return -1 * d;
+                if (valA > valB) return 1 * d;
+                return 0;
+            });
+        }
+
+        function handleItemsPerPageChange(v) { state.itemsPerPage = parseInt(v); state.currentPage = 1; renderTable(); }
+        function handlePageChange(p) { state.currentPage = p; renderTable(); document.querySelector('.overflow-y-auto').scrollTop = 0; }
+
+        function updateSortIcons() {
+            ['kanji', 'usage', 'totalActions', 'daysUsed'].forEach(k => {
+                const el = document.getElementById(`sort-icon-${k}`);
+                if (state.sort.key === k) { 
+                    el.innerHTML = state.sort.direction === 'asc' ? '<i class="fa-solid fa-arrow-up text-xs"></i>' : '<i class="fa-solid fa-arrow-down text-xs"></i>'; 
+                    el.className = "inline-block w-4 text-center ml-1 text-blue-600"; 
+                } else { el.innerHTML = ""; }
+            });
+        }
+
+        function renderDashboard() {
+            const users = state.parsedUsers;
+            // 部門別Gmail除き使用率を集計
+            const deptStats = {};
+            users.forEach(u => {
+                const dept = u.dept || '-';
+                if (!deptStats[dept]) deptStats[dept] = { total: 0, active: 0 };
+                deptStats[dept].total++;
+                const nonGmailActive = Object.entries(u.appUsage || {}).some(([app, used]) => app !== 'Gmail' && used);
+                if (nonGmailActive) deptStats[dept].active++;
+            });
+            state.deptStats = deptStats;
+
+            const active = users.filter(u => u.daysUsed > 0), totalActions = users.reduce((s, u) => s + (u.totalActions || 0), 0);
+            const createKPI = (t, v, u, c) => {
+                const cls = { blue:'text-blue-600', purple:'text-purple-600', slate:'text-slate-800' }[c] || 'text-slate-800';
+                return `<div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm"><p class="text-[10px] font-medium text-slate-500 mb-1">${t}</p><div class="flex items-end gap-1"><h3 class="text-2xl font-bold ${cls}">${v}</h3><span class="text-[10px] text-slate-400 mb-1">${u}</span></div></div>`;
+            };
+            document.getElementById('kpi-container').innerHTML = `
+                ${createKPI('対象アカウント数', users.length, '名', 'slate')}
+                ${createKPI('総アクション数', totalActions.toLocaleString(), '回', 'blue')}
+                ${createKPI('平均使用日数', (active.reduce((s,u)=>s+u.daysUsed,0)/active.length || 0).toFixed(1), '日', 'slate')}
+                ${createKPI('Gemini App利用', users.filter(u => u.appUsage['Gemini App']).length, '名', 'purple')}
+            `;
+            const top5 = [...active].sort((a,b)=>b.daysUsed - a.daysUsed).slice(0, 5);
+            document.getElementById('top-users-container').innerHTML = top5.map((u, i) => `
+                <div class="bg-white p-4 rounded-xl border border-slate-200 text-center shadow-sm relative overflow-hidden transition hover:translate-y-[-2px] cursor-pointer" onclick="openUserDetail('${u.email}')">
+                    <div class="absolute top-2 right-2"><i class="fa-solid fa-medal ${['text-yellow-400','text-slate-400','text-amber-600'][i]||'text-slate-200'} text-lg"></i></div>
+                    ${u.iconUrl ? `<img src="${u.iconUrl}" class="w-12 h-12 rounded-full mx-auto mb-2 object-cover border-2 border-slate-100 shadow-sm">` : `<div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-2 font-bold">${u.kanji[0] || '?'}</div>`}
+                    <p class="font-bold text-slate-800 text-[11px] truncate mt-1">${u.kanji}</p>
+                    <div class="mt-2 bg-slate-50 px-2 py-0.5 rounded-full text-[10px] font-bold text-slate-600">${u.daysUsed} 日</div>
+                </div>
+            `).join('');
+            renderUsagePie(users);
+            renderAppUsage(users);
+            renderDeptSummary();
+            renderTable();
+        }
+
+        function renderUsagePie(users) {
+            const counts = { '高': 0, '中': 0, '低': 0, 'ゼロ': 0 };
+            users.forEach(u => { if(u.daysUsed === 0 || u.usage === '未使用') counts['ゼロ']++; else counts[u.usage]++; });
+            const total = users.length || 1, colors = { high:'#f43f5e', medium:'#fbbf24', low:'#10b981', zero:'#f1f5f9' };
+            const pHigh = (counts['高']/total)*100, pMid = (counts['中']/total)*100, pLow = (counts['低']/total)*100;
+            document.getElementById('usage-pie-chart').style.background = `conic-gradient(${colors.high} 0% ${pHigh}%, ${colors.medium} ${pHigh}% ${pHigh+pMid}%, ${colors.low} ${pHigh+pMid}% ${pHigh+pMid+pLow}%, ${colors.zero} ${pHigh+pMid+pLow}% 100%)`;
+            document.getElementById('inner-legend').innerHTML = `<div class="text-7xl font-black text-slate-800 leading-none mb-3">${users.length}</div><div class="text-[14px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Total Users</div>`;
+            const getPos = (s, e) => { const m = (s + e) / 2, a = (m * 360 - 90) * (Math.PI / 180), r = 187.5; return { x: Math.cos(a) * r, y: Math.sin(a) * r }; };
+            let ringHtml = '', currentPct = 0;
+            [{ l:'高', c:counts['高'], cl:'white', s:'rgba(0,0,0,0.3)', p:pHigh }, { l:'中', c:counts['中'], cl:'white', s:'rgba(0,0,0,0.3)', p:pMid }, { l:'低', c:counts['低'], cl:'white', s:'rgba(0,0,0,0.3)', p:pLow }, { l:'未使用', c:counts['ゼロ'], cl:'#64748b', s:'transparent', p:(counts['ゼロ']/total)*100 }].forEach(seg => {
+                if (seg.p > 3) {
+                    const pos = getPos(currentPct, currentPct + seg.p / 100);
+                    ringHtml += `<div class="absolute font-bold text-center leading-tight flex flex-col items-center justify-center" style="left:calc(50% + ${pos.x}px); top:calc(50% + ${pos.y}px); transform:translate(-50%, -50%); color:${seg.cl}; text-shadow:0px 1px 3px ${seg.s};"><span class="text-sm tracking-widest">${seg.l}</span><span class="text-2xl">${seg.c}</span></div>`;
+                }
+                currentPct += seg.p / 100;
+            });
+            document.getElementById('ring-labels').innerHTML = ringHtml;
+        }
+
+        function renderDeptSummary() {
+            const stats = state.deptStats;
+            const sorted = Object.entries(stats)
+                .filter(([dept]) => !EXCLUDE_DEPTS.has(dept))
+                .sort((a, b) => (b[1].active / b[1].total) - (a[1].active / a[1].total));
+            const cardsHtml = sorted.map(([dept, ds]) => {
+                const pct = ds.total > 0 ? Math.round(ds.active / ds.total * 100) : 0;
+                const barColor = pct >= 70 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-400' : 'bg-rose-400';
+                const textColor = pct >= 70 ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-rose-500';
+                const isActive = state.activeDept === dept;
+                return `<div class="cursor-pointer rounded-lg px-3 py-2 border transition-all ${isActive ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'}" onclick="filterByDept('${dept.replace(/'/g, "\\'")}')">
+                    <div class="flex items-center justify-between mb-1 gap-1">
+                        <span class="text-[11px] font-semibold text-slate-700 truncate leading-tight" title="${dept}">${shortDeptName(dept)}</span>
+                        <span class="text-[11px] font-bold ${textColor} ml-1 shrink-0">${pct}%</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <div class="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="${barColor} h-full" style="width:${pct}%"></div></div>
+                        <span class="text-[10px] text-slate-400 whitespace-nowrap">${ds.active}/${ds.total}人</span>
+                    </div>
+                </div>`;
+            }).join('');
+            document.getElementById('dept-summary').innerHTML = `
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-building text-slate-400 text-xs"></i>
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門別 Gmail除き活用率</span>
+                    <span class="text-[10px] text-slate-400">（クリックで絞込）</span>
+                    ${state.activeDept ? `<button onclick="filterByDept('')" class="ml-auto text-[11px] text-blue-500 hover:text-blue-700 font-medium flex items-center gap-1"><i class="fa-solid fa-xmark text-xs"></i> 絞込解除</button>` : ''}
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">${cardsHtml}</div>
+            `;
+        }
+
+        function filterByDept(dept) {
+            state.activeDept = dept;
+            if (!dept) {
+                state.filteredData = [...state.parsedUsers];
+            } else {
+                state.filteredData = state.parsedUsers.filter(u => u.dept === dept);
+            }
+            state.currentPage = 1;
+            applySort();
+            renderDeptSummary();
+            renderTable();
+        }
+
+        function renderAppUsage(users) {
+            document.getElementById('app-usage-container').innerHTML = APP_LIST.map(app => {
+                const count = users.filter(u => u.appUsage[app]).length, pct = users.length > 0 ? (count/users.length*100) : 0;
+                return `<div class="text-sm"><div class="flex justify-between mb-1.5 font-bold"><span class="text-slate-600">${app}</span><span class="text-slate-900">${count}名</span></div><div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"><div class="bg-blue-600 h-full animate-bar" style="width:${pct}%"></div></div></div>`;
+            }).join('');
+        }
+
+        function renderTable() {
+            const data = state.filteredData, start = (state.currentPage - 1) * state.itemsPerPage;
+            const paginatedData = data.slice(start, start + state.itemsPerPage);
+            document.getElementById('table-body').innerHTML = paginatedData.map(u => `
+                <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="openUserDetail('${u.email}')">
+                    <td class="px-6 py-4"><div class="flex items-center gap-4">${u.iconUrl ? `<img src="${u.iconUrl}" class="w-10 h-10 rounded-full object-cover border border-slate-100 shadow-sm">` : `<div class="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs font-bold">${u.kanji[0] || '?'}</div>`}<div><div class="font-bold text-slate-800 text-base leading-tight">${u.kanji}</div><div class="text-[10px] text-blue-600 font-bold mt-0.5">${shortDeptName(u.dept)}</div></div></div></td>
+                    <td class="px-6 py-4 text-center"><span class="px-3 py-1 text-[10px] font-bold rounded-full border ${u.usage==='高'?'bg-rose-50 text-rose-600 border-rose-200':u.usage==='中'?'bg-amber-50 text-amber-600 border-amber-200':u.usage==='低'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}">${u.daysUsed === 0 ? '未使用' : u.usage}</span></td>
+                    <td class="px-6 py-4 text-right font-bold text-blue-600 text-base">${(u.totalActions || 0).toLocaleString()} <span class="text-[10px] font-normal text-slate-400">回</span></td>
+                    <td class="px-6 py-4 text-right font-bold text-slate-800 text-base">${u.daysUsed} <span class="text-[10px] font-normal text-slate-400">日</span></td>
+                    <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${u.appUsage[a] ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
+                </tr>
+            `).join('');
+            document.getElementById('pagination-info').textContent = `${data.length}件中 ${data.length === 0 ? 0 : start + 1}〜${Math.min(start + state.itemsPerPage, data.length)}件を表示`;
+            let tp = Math.ceil(data.length / state.itemsPerPage), bh = `<button onclick="handlePageChange(${state.currentPage - 1})" class="page-btn" ${state.currentPage === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button>`;
+            for(let i=1; i<=tp; i++) if (i===1 || i===tp || (i>=state.currentPage-1 && i<=state.currentPage+1)) bh += `<button onclick="handlePageChange(${i})" class="page-btn ${i === state.currentPage ? 'active' : ''}">${i}</button>`; else if (Math.abs(i-state.currentPage)===2) bh += `<span class="text-slate-300">...</span>`;
+            document.getElementById('pagination-controls').innerHTML = bh + `<button onclick="handlePageChange(${state.currentPage + 1})" class="page-btn" ${state.currentPage >= tp ? 'disabled' : ''}><i class="fa-solid fa-chevron-right"></i></button>`;
+        }
+
+        document.getElementById('table-search').oninput = (e) => { 
+            const keywords = e.target.value.toLowerCase().split(/[\s　]+/).filter(k => k);
+            state.filteredData = state.parsedUsers.filter(u => 
+                keywords.length === 0 || keywords.some(k => (u.kanji||"").toLowerCase().includes(k) || (u.email||"").toLowerCase().includes(k))
+            ); 
+            state.currentPage = 1; applySort(); renderTable(); 
+        };
+
+        function openUserDetail(email) {
+            const user = state.parsedUsers.find(u => u.email === email);
+            if (!user) return;
+            document.getElementById('modal-user-name').textContent = user.kanji;
+            document.getElementById('modal-user-dept').textContent = shortDeptName(user.dept) + " / " + user.email;
+            const im = document.getElementById('modal-user-icon'), it = document.getElementById('modal-user-init');
+            if (user.iconUrl) { im.src = user.iconUrl; im.classList.remove('hidden'); it.classList.add('hidden'); } else { it.textContent = user.kanji[0]; it.classList.remove('hidden'); im.classList.add('hidden'); }
+            const dl = document.getElementById('daily-list'), sd = Object.keys(user.dailyDetail).sort((a,b) => new Date(b) - new Date(a));
+            if (sd.length === 0) { dl.innerHTML = `<p class="text-center py-12 text-slate-400">履歴がありません</p>`; } else {
+                dl.innerHTML = sd.map(date => {
+                    // ★曜日の取得処理を追加
+                    const d = new Date(date);
+                    const dayStr = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+                    
+                    const apps = user.dailyDetail[date];
+                    const appHtml = Object.keys(apps).map(app => `
+                      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                          <div class="flex items-center gap-3 mb-3">
+                              <span class="text-base font-bold text-slate-800"><i class="${FA_ICONS[app]} mr-2 text-blue-500 text-xl"></i> ${app}</span>
+                              <span class="text-sm font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full">${apps[app].length} 回</span>
+                          </div>
+                          <div class="flex flex-wrap gap-2.5">${[...apps[app]].sort().map(time => `<span class="text-sm text-slate-700 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-medium">${time}</span>`).join('')}</div>
+                      </div>
+                  `).join('');
+                    
+                    // ★日付に曜日を追加し、文字サイズを拡大
+                    return `<div class="space-y-3"><div class="text-base font-bold text-slate-800 flex items-center gap-2"><i class="fa-regular fa-calendar-check text-blue-500"></i> ${date} (${dayStr})</div><div class="grid grid-cols-1 gap-3">${appHtml}</div></div>`;
+                }).join('');
+            }
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+        function closeModal() { document.getElementById('detail-modal').classList.add('hidden'); }
+    </script>
+</body>
+</html>
