@@ -44,7 +44,7 @@ function refreshDashboardCache() {
     '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
     'information IR', 'Media storage CR', 'Channel CRESTEC',
     'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
-    '会議室タブレットGAS管理', '環境分科委員会', '品質保証室', 'サポート窓口'
+    '会議室タブレットGAS管理', '環境分科委員会', 'サポート窓口'
   ]);
 
   const empMap = {};
