@@ -177,7 +177,7 @@
             return dept.replace('プロダクションセンター', 'CRP');
         }
 
-        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '' };
+        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization' };
 
         window.onload = () => { loadData(); };
 
@@ -245,14 +245,19 @@
 
         function renderDashboard() {
             const users = state.parsedUsers;
-            // 部門別Gmail除き使用率を集計
+            // 部門別Gmail除き使用率・定着率を集計
             const deptStats = {};
             users.forEach(u => {
                 const dept = u.dept || '-';
-                if (!deptStats[dept]) deptStats[dept] = { total: 0, active: 0 };
+                if (!deptStats[dept]) deptStats[dept] = { total: 0, active: 0, high: 0, mid: 0, low: 0 };
                 deptStats[dept].total++;
                 const nonGmailActive = Object.entries(u.appUsage || {}).some(([app, used]) => app !== 'Gmail' && used);
-                if (nonGmailActive) deptStats[dept].active++;
+                if (nonGmailActive) {
+                    deptStats[dept].active++;
+                    if (u.usage === '高') deptStats[dept].high++;
+                    else if (u.usage === '中') deptStats[dept].mid++;
+                    else deptStats[dept].low++;
+                }
             });
             state.deptStats = deptStats;
 
@@ -301,16 +306,27 @@
             document.getElementById('ring-labels').innerHTML = ringHtml;
         }
 
+        function calcRetention(ds) {
+            return ds.total > 0 ? (ds.high * 1.0 + ds.mid * 0.5 + ds.low * 0.25) / ds.total * 100 : 0;
+        }
+
         function renderDeptSummary() {
             const stats = state.deptStats;
+            const mode = state.deptViewMode;
+            const score = ([, ds]) => mode === 'utilization' ? ds.active / ds.total : calcRetention(ds) / 100;
             const sorted = Object.entries(stats)
                 .filter(([dept]) => !EXCLUDE_DEPTS.has(dept))
-                .sort((a, b) => (b[1].active / b[1].total) - (a[1].active / a[1].total));
+                .sort((a, b) => score(b) - score(a));
             const cardsHtml = sorted.map(([dept, ds]) => {
-                const pct = ds.total > 0 ? Math.round(ds.active / ds.total * 100) : 0;
+                const pct = mode === 'utilization'
+                    ? Math.round(ds.active / ds.total * 100)
+                    : Math.round(calcRetention(ds));
                 const barColor = pct >= 70 ? 'bg-emerald-500' : pct >= 40 ? 'bg-amber-400' : 'bg-rose-400';
                 const textColor = pct >= 70 ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-rose-500';
                 const isActive = state.activeDept === dept;
+                const subText = mode === 'utilization'
+                    ? `${ds.active}/${ds.total}人`
+                    : `高${ds.high}・中${ds.mid}・低${ds.low}`;
                 return `<div class="cursor-pointer rounded-lg px-3 py-2 border transition-all ${isActive ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-white border-slate-200 hover:border-blue-200 hover:bg-blue-50/40'}" onclick="filterByDept('${dept.replace(/'/g, "\\'")}')">
                     <div class="flex items-center justify-between mb-1 gap-1">
                         <span class="text-[11px] font-semibold text-slate-700 truncate leading-tight" title="${dept}">${shortDeptName(dept)}</span>
@@ -318,19 +334,42 @@
                     </div>
                     <div class="flex items-center gap-1.5">
                         <div class="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div class="${barColor} h-full" style="width:${pct}%"></div></div>
-                        <span class="text-[10px] text-slate-400 whitespace-nowrap">${ds.active}/${ds.total}人</span>
+                        <span class="text-[10px] text-slate-400 whitespace-nowrap">${subText}</span>
                     </div>
                 </div>`;
             }).join('');
             document.getElementById('dept-summary').innerHTML = `
-                <div class="flex items-center gap-2 mb-3">
+                <div class="flex items-center gap-2 mb-3 flex-wrap">
                     <i class="fa-solid fa-building text-slate-400 text-xs"></i>
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門別 Gmail除き活用率</span>
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門別 Gmail除き</span>
+                    <div class="flex rounded-lg border border-slate-200 overflow-hidden text-[11px] font-bold">
+                        <button onclick="setDeptViewMode('utilization')" class="px-3 py-1 transition ${mode === 'utilization' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}">利用率</button>
+                        <button onclick="setDeptViewMode('retention')" class="px-3 py-1 transition ${mode === 'retention' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}">定着率</button>
+                    </div>
                     <span class="text-[10px] text-slate-400">（クリックで絞込）</span>
+                    <button onclick="document.getElementById('dept-tips').classList.toggle('hidden')" class="text-[11px] text-slate-400 hover:text-blue-500 transition flex items-center gap-1"><i class="fa-solid fa-circle-question"></i> 算出方式</button>
                     ${state.activeDept ? `<button onclick="filterByDept('')" class="ml-auto text-[11px] text-blue-500 hover:text-blue-700 font-medium flex items-center gap-1"><i class="fa-solid fa-xmark text-xs"></i> 絞込解除</button>` : ''}
+                </div>
+                <div id="dept-tips" class="hidden mb-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-slate-600 space-y-2">
+                    <p class="font-bold text-blue-700">利用率の算出方式</p>
+                    <p>Gmail以外のアプリを <b>1回以上</b> 使ったユーザー数 ÷ 部門人数 × 100</p>
+                    <p class="font-bold text-blue-700 pt-1">定着率の算出方式</p>
+                    <p>各ユーザーの活用レベルに係数をかけて合計し、部門人数で割って算出します。</p>
+                    <div class="grid grid-cols-4 gap-1 mt-1 text-center">
+                        <div class="bg-rose-50 border border-rose-200 rounded p-1.5"><div class="font-bold text-rose-600">高</div><div class="text-slate-500">× 1.0</div></div>
+                        <div class="bg-amber-50 border border-amber-200 rounded p-1.5"><div class="font-bold text-amber-600">中</div><div class="text-slate-500">× 0.5</div></div>
+                        <div class="bg-emerald-50 border border-emerald-200 rounded p-1.5"><div class="font-bold text-emerald-600">低</div><div class="text-slate-500">× 0.25</div></div>
+                        <div class="bg-slate-50 border border-slate-200 rounded p-1.5"><div class="font-bold text-slate-400">未使用</div><div class="text-slate-400">× 0</div></div>
+                    </div>
+                    <p class="text-slate-400 text-[10px]">例：10人中 高2・中5・低1・未使用2 → (2×1.0 + 5×0.5 + 1×0.25) ÷ 10 × 100 = 47.5%</p>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">${cardsHtml}</div>
             `;
+        }
+
+        function setDeptViewMode(mode) {
+            state.deptViewMode = mode;
+            renderDeptSummary();
         }
 
         function filterByDept(dept) {
