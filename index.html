@@ -158,6 +158,7 @@
                 <button onclick="closeModal()" class="text-white/80 hover:text-white transition text-2xl"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="p-6 max-h-[65vh] overflow-y-auto bg-slate-50" id="modal-content">
+                <div id="modal-app-counts" class="mb-5"></div>
                 <h5 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> JST(日本時間)でのアクション履歴</h5>
                 <div id="daily-list" class="space-y-4"></div>
             </div>
@@ -345,7 +346,13 @@
                 if (nonGmailActions >= 20 && nonGmailActions >= top10) nonGmailUsage = '高';
                 else if (nonGmailActions >= 5) nonGmailUsage = '中';
                 else if (nonGmailActions > 0) nonGmailUsage = '低';
-                return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage };
+                const appCounts = {};
+                Object.values(u.dailyDetail || {}).forEach(apps => {
+                    Object.entries(apps).forEach(([app, times]) => {
+                        appCounts[app] = (appCounts[app] || 0) + times.length;
+                    });
+                });
+                return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage, appCounts };
             });
         }
 
@@ -464,7 +471,7 @@
                     <td class="px-6 py-4 text-center"><span class="px-3 py-1 text-[10px] font-bold rounded-full border ${usageCls}">${dispUsage}</span></td>
                     <td class="px-6 py-4 text-right font-bold text-blue-600 text-base">${(dispActions || 0).toLocaleString()} <span class="text-[10px] font-normal text-slate-400">回</span></td>
                     <td class="px-6 py-4 text-right font-bold text-slate-800 text-base">${dispDays} <span class="text-[10px] font-normal text-slate-400">日</span></td>
-                    <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${u.appUsage[a] ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
+                    <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}${(u.appCounts||{})[a] ? ': ' + (u.appCounts||{})[a] + '回' : ''}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${u.appUsage[a] ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
                 </tr>`;
             }).join('');
             document.getElementById('pagination-info').textContent = `${data.length}件中 ${data.length === 0 ? 0 : start + 1}〜${Math.min(start + state.itemsPerPage, data.length)}件を表示`;
@@ -488,6 +495,17 @@
             document.getElementById('modal-user-dept').textContent = shortDeptName(user.dept) + " / " + user.email;
             const im = document.getElementById('modal-user-icon'), it = document.getElementById('modal-user-init');
             if (user.iconUrl) { im.src = user.iconUrl; im.classList.remove('hidden'); it.classList.add('hidden'); } else { it.textContent = user.kanji[0]; it.classList.remove('hidden'); im.classList.add('hidden'); }
+            const ac = user.appCounts || {};
+            const appCountsHtml = APP_LIST.filter(a => ac[a] > 0).map(a => `
+                <div class="bg-white rounded-xl border border-slate-200 p-3 text-center shadow-sm">
+                    <i class="${FA_ICONS[a]} text-blue-500 text-xl mb-1.5 block"></i>
+                    <div class="text-[10px] font-semibold text-slate-500 truncate mb-1">${a}</div>
+                    <div class="text-xl font-black text-blue-600 leading-none">${ac[a]}</div>
+                    <div class="text-[10px] text-slate-400">回</div>
+                </div>`).join('');
+            document.getElementById('modal-app-counts').innerHTML = appCountsHtml
+                ? `<h5 class="font-bold text-slate-800 mb-3 flex items-center gap-2"><i class="fa-solid fa-chart-bar text-blue-600"></i> アプリ別利用回数</h5><div class="grid grid-cols-3 sm:grid-cols-5 gap-2">${appCountsHtml}</div>`
+                : '';
             const dl = document.getElementById('daily-list'), sd = Object.keys(user.dailyDetail).sort((a,b) => new Date(b) - new Date(a));
             if (sd.length === 0) { dl.innerHTML = `<p class="text-center py-12 text-slate-400">履歴がありません</p>`; } else {
                 dl.innerHTML = sd.map(date => {
