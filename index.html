@@ -96,7 +96,13 @@
 
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             <div class="p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <h3 class="text-lg font-bold text-slate-800">全ユーザー詳細 <span class="text-xs font-normal text-slate-400 ml-2">※名前クリックで詳細表示</span></h3>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h3 class="text-lg font-bold text-slate-800">全ユーザー詳細 <span class="text-xs font-normal text-slate-400 ml-2">※名前クリックで詳細表示</span></h3>
+                    <div class="flex rounded-lg border border-slate-200 overflow-hidden text-[11px] font-bold shadow-sm">
+                        <button id="gmail-btn-all" onclick="setGmailMode('all')" class="px-3 py-1.5 transition bg-blue-600 text-white">Gmail含む</button>
+                        <button id="gmail-btn-nonGmail" onclick="setGmailMode('nonGmail')" class="px-3 py-1.5 transition bg-white text-slate-500 hover:bg-slate-50">Gmail除く</button>
+                    </div>
+                </div>
                 <div class="flex flex-wrap items-center gap-4 text-sm">
                     <div class="flex items-center gap-2 text-slate-500 font-medium">
                         <span>表示件数:</span>
@@ -177,7 +183,7 @@
             return dept.replace('プロダクションセンター', 'CRP');
         }
 
-        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization' };
+        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization', gmailMode: 'all' };
 
         window.onload = () => { loadData(); };
 
@@ -190,9 +196,11 @@
                     const filtered = res.users.filter(u =>
                         !EXCLUDE_NAMES.has(u.kanji) && !EXCLUDE_DEPTS.has(u.dept)
                     );
-                    state.parsedUsers = filtered;
-                    state.filteredData = [...filtered];
+                    const enriched = enrichWithNonGmail(filtered);
+                    state.parsedUsers = enriched;
+                    state.filteredData = [...enriched];
                     state.activeDept = '';
+                    state.gmailMode = 'all';
                     if (res.updatedAt) document.getElementById('last-update').textContent = '最終集計(JST): ' + res.updatedAt;
                     if (res.period) document.getElementById('period-display').textContent = `集計期間: ${res.period}`;
                     applySort();
@@ -217,12 +225,21 @@
 
         function applySort() {
             const k = state.sort.key, d = state.sort.direction === 'asc' ? 1 : -1;
+            const ng = state.gmailMode === 'nonGmail';
             state.filteredData.sort((a, b) => {
-                let valA = a[k], valB = b[k];
-                if (k === 'usage') {
-                    const rank = { '高': 3, '中': 2, '低': 1, 'ゼロ': 0, '未使用': 0 };
-                    valA = rank[a.daysUsed === 0 ? '未使用' : a.usage] || 0;
-                    valB = rank[b.daysUsed === 0 ? '未使用' : b.usage] || 0;
+                let valA, valB;
+                if (k === 'totalActions') {
+                    valA = ng ? a.nonGmailActions : a.totalActions;
+                    valB = ng ? b.nonGmailActions : b.totalActions;
+                } else if (k === 'daysUsed') {
+                    valA = ng ? a.nonGmailDays : a.daysUsed;
+                    valB = ng ? b.nonGmailDays : b.daysUsed;
+                } else if (k === 'usage') {
+                    const rank = { '高': 3, '中': 2, '低': 1, '未使用': 0 };
+                    valA = rank[ng ? a.nonGmailUsage : (a.daysUsed === 0 ? '未使用' : a.usage)] || 0;
+                    valB = rank[ng ? b.nonGmailUsage : (b.daysUsed === 0 ? '未使用' : b.usage)] || 0;
+                } else {
+                    valA = a[k]; valB = b[k];
                 }
                 if (valA < valB) return -1 * d;
                 if (valA > valB) return 1 * d;
@@ -243,23 +260,29 @@
             });
         }
 
-        function renderDashboard() {
+        function calcDeptStats() {
             const users = state.parsedUsers;
-            // 部門別Gmail除き使用率・定着率を集計
+            const ng = state.gmailMode === 'nonGmail';
             const deptStats = {};
             users.forEach(u => {
                 const dept = u.dept || '-';
                 if (!deptStats[dept]) deptStats[dept] = { total: 0, active: 0, high: 0, mid: 0, low: 0 };
                 deptStats[dept].total++;
-                const nonGmailActive = Object.entries(u.appUsage || {}).some(([app, used]) => app !== 'Gmail' && used);
-                if (nonGmailActive) {
+                const isActive = ng ? u.nonGmailActions > 0 : Object.entries(u.appUsage || {}).some(([app, used]) => app !== 'Gmail' && used);
+                const usage = ng ? u.nonGmailUsage : u.usage;
+                if (isActive) {
                     deptStats[dept].active++;
-                    if (u.usage === '高') deptStats[dept].high++;
-                    else if (u.usage === '中') deptStats[dept].mid++;
-                    else deptStats[dept].low++;
+                    if (usage === '高') deptStats[dept].high++;
+                    else if (usage === '中') deptStats[dept].mid++;
+                    else if (usage === '低') deptStats[dept].low++;
                 }
             });
             state.deptStats = deptStats;
+        }
+
+        function renderDashboard() {
+            const users = state.parsedUsers;
+            calcDeptStats();
 
             const active = users.filter(u => u.daysUsed > 0), totalActions = users.reduce((s, u) => s + (u.totalActions || 0), 0);
             const createKPI = (t, v, u, c) => {
@@ -304,6 +327,38 @@
                 currentPct += seg.p / 100;
             });
             document.getElementById('ring-labels').innerHTML = ringHtml;
+        }
+
+        function enrichWithNonGmail(users) {
+            const counts = users.map(u => {
+                return Object.values(u.dailyDetail || {}).reduce((sum, apps) =>
+                    sum + Object.entries(apps).reduce((s, [app, times]) => s + (app !== 'Gmail' ? times.length : 0), 0), 0);
+            }).sort((a, b) => b - a);
+            const top10 = counts.length > 0 ? counts[Math.floor(counts.length * 0.1)] : 999;
+            return users.map(u => {
+                const nonGmailActions = Object.values(u.dailyDetail || {}).reduce((sum, apps) =>
+                    sum + Object.entries(apps).reduce((s, [app, times]) => s + (app !== 'Gmail' ? times.length : 0), 0), 0);
+                const nonGmailDays = Object.keys(u.dailyDetail || {}).filter(date =>
+                    Object.entries(u.dailyDetail[date]).some(([app, times]) => app !== 'Gmail' && times.length > 0)
+                ).length;
+                let nonGmailUsage = '未使用';
+                if (nonGmailActions >= 20 && nonGmailActions >= top10) nonGmailUsage = '高';
+                else if (nonGmailActions >= 5) nonGmailUsage = '中';
+                else if (nonGmailActions > 0) nonGmailUsage = '低';
+                return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage };
+            });
+        }
+
+        function setGmailMode(mode) {
+            state.gmailMode = mode;
+            ['all', 'nonGmail'].forEach(m => {
+                const btn = document.getElementById(`gmail-btn-${m}`);
+                if (btn) btn.className = `px-3 py-1.5 transition ${m === mode ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`;
+            });
+            calcDeptStats();
+            applySort();
+            renderDeptSummary();
+            renderTable();
         }
 
         function calcRetention(ds) {
@@ -351,7 +406,9 @@
                     ${state.activeDept ? `<button onclick="filterByDept('')" class="ml-auto text-[11px] text-blue-500 hover:text-blue-700 font-medium flex items-center gap-1"><i class="fa-solid fa-xmark text-xs"></i> 絞込解除</button>` : ''}
                 </div>
                 <div id="dept-tips" class="hidden mb-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-slate-600 space-y-2">
-                    <p class="font-bold text-blue-700">利用率の算出方式</p>
+                    <p class="font-bold text-blue-700">Gmail含む / Gmail除く</p>
+                    <p>全ユーザー詳細のボタンで切り替えると、部門別の集計も連動して再計算されます。<br><b>Gmail除く</b>モードでは、各ユーザーのGmail以外のアクション数を元に活用レベルを再判定します。</p>
+                    <p class="font-bold text-blue-700 pt-1">利用率の算出方式</p>
                     <p>Gmail以外のアプリを <b>1回以上</b> 使ったユーザー数 ÷ 部門人数 × 100</p>
                     <p class="font-bold text-blue-700 pt-1">定着率の算出方式</p>
                     <p>各ユーザーの活用レベルに係数をかけて合計し、部門人数で割って算出します。</p>
@@ -393,17 +450,23 @@
         }
 
         function renderTable() {
+            const ng = state.gmailMode === 'nonGmail';
             const data = state.filteredData, start = (state.currentPage - 1) * state.itemsPerPage;
             const paginatedData = data.slice(start, start + state.itemsPerPage);
-            document.getElementById('table-body').innerHTML = paginatedData.map(u => `
+            document.getElementById('table-body').innerHTML = paginatedData.map(u => {
+                const dispUsage = ng ? u.nonGmailUsage : (u.daysUsed === 0 ? '未使用' : u.usage);
+                const dispActions = ng ? u.nonGmailActions : u.totalActions;
+                const dispDays = ng ? u.nonGmailDays : u.daysUsed;
+                const usageCls = dispUsage==='高'?'bg-rose-50 text-rose-600 border-rose-200':dispUsage==='中'?'bg-amber-50 text-amber-600 border-amber-200':dispUsage==='低'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200';
+                return `
                 <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="openUserDetail('${u.email}')">
                     <td class="px-6 py-4"><div class="flex items-center gap-4">${u.iconUrl ? `<img src="${u.iconUrl}" class="w-10 h-10 rounded-full object-cover border border-slate-100 shadow-sm">` : `<div class="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-xs font-bold">${u.kanji[0] || '?'}</div>`}<div><div class="font-bold text-slate-800 text-base leading-tight">${u.kanji}</div><div class="text-[10px] text-blue-600 font-bold mt-0.5">${shortDeptName(u.dept)}</div></div></div></td>
-                    <td class="px-6 py-4 text-center"><span class="px-3 py-1 text-[10px] font-bold rounded-full border ${u.usage==='高'?'bg-rose-50 text-rose-600 border-rose-200':u.usage==='中'?'bg-amber-50 text-amber-600 border-amber-200':u.usage==='低'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200'}">${u.daysUsed === 0 ? '未使用' : u.usage}</span></td>
-                    <td class="px-6 py-4 text-right font-bold text-blue-600 text-base">${(u.totalActions || 0).toLocaleString()} <span class="text-[10px] font-normal text-slate-400">回</span></td>
-                    <td class="px-6 py-4 text-right font-bold text-slate-800 text-base">${u.daysUsed} <span class="text-[10px] font-normal text-slate-400">日</span></td>
+                    <td class="px-6 py-4 text-center"><span class="px-3 py-1 text-[10px] font-bold rounded-full border ${usageCls}">${dispUsage}</span></td>
+                    <td class="px-6 py-4 text-right font-bold text-blue-600 text-base">${(dispActions || 0).toLocaleString()} <span class="text-[10px] font-normal text-slate-400">回</span></td>
+                    <td class="px-6 py-4 text-right font-bold text-slate-800 text-base">${dispDays} <span class="text-[10px] font-normal text-slate-400">日</span></td>
                     <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${u.appUsage[a] ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
-                </tr>
-            `).join('');
+                </tr>`;
+            }).join('');
             document.getElementById('pagination-info').textContent = `${data.length}件中 ${data.length === 0 ? 0 : start + 1}〜${Math.min(start + state.itemsPerPage, data.length)}件を表示`;
             let tp = Math.ceil(data.length / state.itemsPerPage), bh = `<button onclick="handlePageChange(${state.currentPage - 1})" class="page-btn" ${state.currentPage === 1 ? 'disabled' : ''}><i class="fa-solid fa-chevron-left"></i></button>`;
             for(let i=1; i<=tp; i++) if (i===1 || i===tp || (i>=state.currentPage-1 && i<=state.currentPage+1)) bh += `<button onclick="handlePageChange(${i})" class="page-btn ${i === state.currentPage ? 'active' : ''}">${i}</button>`; else if (Math.abs(i-state.currentPage)===2) bh += `<span class="text-slate-300">...</span>`;
