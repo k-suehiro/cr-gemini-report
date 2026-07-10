@@ -64,26 +64,20 @@ function refreshDashboardCache() {
   const cacheSheet = ss.getSheetByName('DashboardCache') || ss.insertSheet('DashboardCache');
   const EXTERNAL_DB_ID = '1Q9Qdk7K1t_L0KcI0I_J7W62fFHO8i4SW9IZ1jb6L4-k';
   
-  const EXCLUDE_DEPT_SET = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他']);
-  const EXCLUDE_NAME_SET = new Set([
-    'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
-    '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
-    'information IR', 'Media storage CR', 'Channel CRESTEC',
-    'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
-    '会議室タブレットGAS管理', '環境分科委員会', 'サポート窓口'
-  ]);
+  const EXCLUDE_CATEGORY_SET = new Set(['協力会社', '退職者', '共有', '未設定', 'マインズ', 'パセイジ']);
 
   const empMap = {};
   try {
     const accountListSheet = SpreadsheetApp.openById(EXTERNAL_DB_ID).getSheetByName('アカウントリスト');
     const empData = accountListSheet.getDataRange().getValues();
     const headers = empData[0];
-    const emailIdx = headers.indexOf('メールアドレス'), nameIdx = headers.indexOf('名前'), iconIdx = headers.indexOf('アイコンURL'), deptIdx = headers.indexOf('所属');
+    const emailIdx = headers.indexOf('メールアドレス'), nameIdx = headers.indexOf('名前'), iconIdx = headers.indexOf('アイコンURL'), deptIdx = headers.indexOf('所属'), categoryIdx = headers.indexOf('区分');
     for (let i = 1; i < empData.length; i++) {
       const email = String(empData[i][emailIdx] || "").toLowerCase().trim();
       const name = String(empData[i][nameIdx] || "");
       const dept = String(empData[i][deptIdx] || "");
-      if (email && !EXCLUDE_NAME_SET.has(name) && !EXCLUDE_DEPT_SET.has(dept)) {
+      const category = String(empData[i][categoryIdx] || "");
+      if (email && !EXCLUDE_CATEGORY_SET.has(category)) {
         empMap[email] = { name: name, icon: empData[i][iconIdx], dept: dept };
       }
     }

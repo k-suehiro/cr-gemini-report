@@ -173,14 +173,6 @@
         const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App'];
         const FA_ICONS = { 'Gmail':'fa-solid fa-envelope', 'Google ドキュメント':'fa-solid fa-file-lines', 'Google スプレッドシート':'fa-solid fa-table', 'Google スライド':'fa-solid fa-desktop', 'Google ドライブ':'fa-brands fa-google-drive', 'Google Meet':'fa-solid fa-video', 'Studio':'fa-solid fa-microphone', 'Google Vids':'fa-solid fa-film', 'Gemini App':'fa-solid fa-wand-magic-sparkles' };
 
-        const EXCLUDE_DEPTS = new Set(['退職者', '退職', 'マインズ', 'パセイジ', 'PGその他']);
-        const EXCLUDE_NAMES = new Set([
-            'api gemini', 'ITDC TEST', '浜松営業共有01', 'クレステック財務経理課',
-            '株式会社クレステック人事総務', 'クレステックHR管理', 'クレステックCRESTEC',
-            'information IR', 'Media storage CR', 'Channel CRESTEC',
-            'CUSソーシャルメディア管理', 'クレステックリモート', 'システム管理',
-            '会議室タブレットGAS管理', '環境分科委員会', 'サポート窓口'
-        ]);
         function shortDeptName(dept) {
             return dept.replace('プロダクションセンター', 'CRP');
         }
@@ -195,10 +187,7 @@
             google.script.run
                 .withSuccessHandler(res => {
                     if (res.error) { document.getElementById('loading-text').innerHTML = `<span class="text-red-500">${res.error}</span>`; return; }
-                    const filtered = res.users.filter(u =>
-                        !EXCLUDE_NAMES.has(u.kanji) && !EXCLUDE_DEPTS.has(u.dept)
-                    );
-                    const enriched = enrichWithNonGmail(filtered);
+                    const enriched = enrichWithNonGmail(res.users);
                     state.parsedUsers = enriched;
                     state.filteredData = [...enriched];
                     state.activeDept = '';
@@ -379,7 +368,6 @@
             const mode = state.deptViewMode;
             const score = ([, ds]) => mode === 'utilization' ? ds.active / ds.total : calcRetention(ds) / 100;
             const sorted = Object.entries(stats)
-                .filter(([dept]) => !EXCLUDE_DEPTS.has(dept))
                 .sort((a, b) => score(b) - score(a));
             const cardsHtml = sorted.map(([dept, ds]) => {
                 const pct = mode === 'utilization'
