@@ -1,5 +1,7 @@
 # Gemini 利用状況ダッシュボード
 
+**Version: v1.1.3**
+
 Google Workspace の Audit Log（`gemini_in_workspace_apps`）を集計し、社内の Gemini 利用状況を可視化する Google Apps Script（GAS）Web アプリです。
 
 ## 概要
@@ -59,6 +61,44 @@ clasp push
 ```
 
 GAS エディタで Web アプリとしてデプロイしてください（`doGet`）。
+
+### Google 拡張サービス（Advanced Services）
+
+GAS プロジェクトで以下の 2 つの拡張サービスを有効化しています（`appsscript.json` に定義）。
+
+| サービス | API バージョン | 用途 |
+|----------|---------------|------|
+| **AdminReports** | `reports_v1` | Audit Log の取得。`fetchYesterdayLogs` 内で `AdminReports.Activities.list()` を呼び出し、`gemini_in_workspace_apps` の利用ログを `LogStorage` シートへ追記 |
+| **AdminDirectory** | `directory_v1` | Google Workspace Admin SDK Directory API。Workspace のユーザー・組織情報へアクセスするためのサービス（プロジェクトで有効化済み） |
+
+有効化手順（初回セットアップ時）:
+
+1. GAS エディタ → **サービス**（左メニューの「+」）→ **AdminReports API** を追加
+2. 同様に **AdminDirectory API** を追加
+3. `clasp push` 後も `appsscript.json` の `enabledAdvancedServices` と整合していることを確認
+
+### 時間主導型トリガー
+
+毎日のログ取得・キャッシュ更新は、以下のトリガーで自動実行しています。
+
+| 項目 | 設定値 |
+|------|--------|
+| 実行する関数 | `dailyUpdateFlow` |
+| デプロイ時に実行 | Head |
+| イベントのソース | 時間主導型 |
+| トリガーのタイプ | 日付ベースのタイマー |
+| 時刻 | 午前 1 時～2 時（GMT+09:00 / JST） |
+| エラー通知設定 | 毎日通知を受け取る |
+
+`dailyUpdateFlow` は内部で次を順に実行します。
+
+1. `fetchYesterdayLogs` … 前日分の Audit Log を取得して `LogStorage` に追加
+2. `refreshDashboardCache` … `DashboardCache` シートを再集計
+
+トリガーの設定手順:
+
+1. GAS エディタ → **トリガー**（時計アイコン）→ **トリガーを追加**
+2. 上表のとおり各項目を設定して保存
 
 ### キャッシュ再集計
 

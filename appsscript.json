@@ -6,6 +6,11 @@
         "userSymbol": "AdminReports",
         "version": "reports_v1",
         "serviceId": "admin"
+      },
+      {
+        "userSymbol": "AdminDirectory",
+        "version": "directory_v1",
+        "serviceId": "admin"
       }
     ]
   },
