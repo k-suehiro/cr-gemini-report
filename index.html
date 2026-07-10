@@ -159,8 +159,8 @@
             </div>
             <div class="p-6 max-h-[65vh] overflow-y-auto bg-slate-50" id="modal-content">
                 <div id="modal-app-counts" class="mb-5"></div>
-                <h5 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-blue-600"></i> JST(日本時間)でのアクション履歴</h5>
-                <div id="daily-list" class="space-y-4"></div>
+                <h5 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><i class="fa-solid fa-list-check text-blue-600"></i> 日別・アプリ別利用回数 (JST)</h5>
+                <div id="daily-list" class="space-y-2"></div>
             </div>
             <div class="p-4 bg-white border-t border-slate-100 text-center">
                 <p class="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Generated from Audit Logs (JST)</p>
@@ -332,15 +332,16 @@
 
         function enrichWithNonGmail(users) {
             const counts = users.map(u => {
+                // 配列のlengthではなく回数そのものを足すように変更
                 return Object.values(u.dailyDetail || {}).reduce((sum, apps) =>
-                    sum + Object.entries(apps).reduce((s, [app, times]) => s + (app !== 'Gmail' ? times.length : 0), 0), 0);
+                    sum + Object.entries(apps).reduce((s, [app, count]) => s + (app !== 'Gmail' ? count : 0), 0), 0);
             }).sort((a, b) => b - a);
             const top10 = counts.length > 0 ? counts[Math.floor(counts.length * 0.1)] : 999;
             return users.map(u => {
                 const nonGmailActions = Object.values(u.dailyDetail || {}).reduce((sum, apps) =>
-                    sum + Object.entries(apps).reduce((s, [app, times]) => s + (app !== 'Gmail' ? times.length : 0), 0), 0);
+                    sum + Object.entries(apps).reduce((s, [app, count]) => s + (app !== 'Gmail' ? count : 0), 0), 0);
                 const nonGmailDays = Object.keys(u.dailyDetail || {}).filter(date =>
-                    Object.entries(u.dailyDetail[date]).some(([app, times]) => app !== 'Gmail' && times.length > 0)
+                    Object.entries(u.dailyDetail[date]).some(([app, count]) => app !== 'Gmail' && count > 0)
                 ).length;
                 let nonGmailUsage = '未使用';
                 if (nonGmailActions >= 20 && nonGmailActions >= top10) nonGmailUsage = '高';
@@ -348,8 +349,8 @@
                 else if (nonGmailActions > 0) nonGmailUsage = '低';
                 const appCounts = {};
                 Object.values(u.dailyDetail || {}).forEach(apps => {
-                    Object.entries(apps).forEach(([app, times]) => {
-                        appCounts[app] = (appCounts[app] || 0) + times.length;
+                    Object.entries(apps).forEach(([app, count]) => {
+                        appCounts[app] = (appCounts[app] || 0) + count;
                     });
                 });
                 return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage, appCounts };
@@ -481,7 +482,7 @@
         }
 
         document.getElementById('table-search').oninput = (e) => { 
-            const keywords = e.target.value.toLowerCase().split(/[\s　]+/).filter(k => k);
+            const keywords = e.target.value.toLowerCase().split(/[\s ]+/).filter(k => k);
             state.filteredData = state.parsedUsers.filter(u => 
                 keywords.length === 0 || keywords.some(k => (u.kanji||"").toLowerCase().includes(k) || (u.email||"").toLowerCase().includes(k))
             ); 
@@ -509,23 +510,26 @@
             const dl = document.getElementById('daily-list'), sd = Object.keys(user.dailyDetail).sort((a,b) => new Date(b) - new Date(a));
             if (sd.length === 0) { dl.innerHTML = `<p class="text-center py-12 text-slate-400">履歴がありません</p>`; } else {
                 dl.innerHTML = sd.map(date => {
-                    // ★曜日の取得処理を追加
                     const d = new Date(date);
                     const dayStr = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
                     
                     const apps = user.dailyDetail[date];
-                    const appHtml = Object.keys(apps).map(app => `
-                      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                          <div class="flex items-center gap-3 mb-3">
-                              <span class="text-base font-bold text-slate-800"><i class="${FA_ICONS[app]} mr-2 text-blue-500 text-xl"></i> ${app}</span>
-                              <span class="text-sm font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full">${apps[app].length} 回</span>
-                          </div>
-                          <div class="flex flex-wrap gap-2.5">${[...apps[app]].sort().map(time => `<span class="text-sm text-slate-700 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 font-medium">${time}</span>`).join('')}</div>
-                      </div>
-                  `).join('');
                     
-                    // ★日付に曜日を追加し、文字サイズを拡大
-                    return `<div class="space-y-3"><div class="text-base font-bold text-slate-800 flex items-center gap-2"><i class="fa-regular fa-calendar-check text-blue-500"></i> ${date} (${dayStr})</div><div class="grid grid-cols-1 gap-3">${appHtml}</div></div>`;
+                    // 横一列のバッジデザインに変更
+                    const appHtml = Object.keys(apps).map(app => `
+                        <div class="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                            <i class="${FA_ICONS[app]} text-blue-500"></i>
+                            <span class="text-sm font-bold text-slate-700">${app}</span>
+                            <span class="text-sm font-black text-blue-600 ml-1">${apps[app]}<span class="text-[10px] text-slate-400 ml-0.5 font-normal">回</span></span>
+                        </div>
+                    `).join('');
+                    
+                    return `<div class="flex flex-col sm:flex-row sm:items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm transition hover:border-blue-300">
+                                <div class="text-sm font-bold text-slate-800 flex items-center gap-2 w-32 shrink-0">
+                                    <i class="fa-regular fa-calendar-check text-blue-500"></i> ${date} (${dayStr})
+                                </div>
+                                <div class="flex flex-wrap gap-2 flex-1">${appHtml}</div>
+                            </div>`;
                 }).join('');
             }
             document.getElementById('detail-modal').classList.remove('hidden');
