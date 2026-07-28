@@ -34,7 +34,7 @@
                   <i class="fa-solid fa-wand-magic-sparkles text-blue-600"></i> Gemini 利用状況 (直近28日間)
               </h1>
               <p id="last-update" class="text-[10px] text-slate-400 mt-1"></p>
-              <p class="text-[10px] text-slate-300 mt-0.5">v1.1.5</p>
+              <p class="text-[10px] text-slate-300 mt-0.5">v1.1.6</p>
             </div>
             <button onclick="loadData()" class="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition">
                 <i class="fa-solid fa-rotate-right mr-2 text-slate-400"></i> キャッシュを読込
@@ -194,6 +194,15 @@
             return dept.replace('プロダクションセンター', 'CRP');
         }
 
+        function canonicalAppName(app) {
+            const normalized = String(app).toLowerCase();
+            return APP_LIST.find(item => item.toLowerCase() === normalized) || app;
+        }
+
+        function hasAppUsage(user, app) {
+            return ((user.appCounts || {})[app] || 0) > 0 || Boolean((user.appUsage || {})[app]);
+        }
+
         let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization', appMode: 'all' };
 
         window.onload = () => { loadData(); };
@@ -301,7 +310,7 @@
                 ${createKPI('対象アカウント数', users.length, '名', 'slate')}
                 ${createKPI('総アクション数', totalActions.toLocaleString(), '回', 'blue')}
                 ${createKPI('平均使用日数', (active.reduce((s,u)=>s+u.daysUsed,0)/active.length || 0).toFixed(1), '日', 'slate')}
-                ${createKPI('Gemini App利用', users.filter(u => u.appUsage['Gemini App']).length, '名', 'purple')}
+                ${createKPI('Gemini App利用', users.filter(u => hasAppUsage(u, 'Gemini App')).length, '名', 'purple')}
             `;
             const top5 = [...active].sort((a,b)=>b.daysUsed - a.daysUsed).slice(0, 5);
             document.getElementById('top-users-container').innerHTML = top5.map((u, i) => `
@@ -358,8 +367,9 @@
                 const appDays = {};
                 Object.values(u.dailyDetail || {}).forEach(apps => {
                     Object.entries(apps).forEach(([app, count]) => {
-                        appCounts[app] = (appCounts[app] || 0) + count;
-                        if (count > 0) appDays[app] = (appDays[app] || 0) + 1;
+                        const canonicalApp = canonicalAppName(app);
+                        appCounts[canonicalApp] = (appCounts[canonicalApp] || 0) + count;
+                        if (count > 0) appDays[canonicalApp] = (appDays[canonicalApp] || 0) + 1;
                     });
                 });
                 return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage, appCounts, appDays };
@@ -488,7 +498,7 @@
 
         function renderAppUsage(users) {
             document.getElementById('app-usage-container').innerHTML = APP_LIST.map(app => {
-                const count = users.filter(u => u.appUsage[app]).length, pct = users.length > 0 ? (count/users.length*100) : 0;
+                const count = users.filter(u => hasAppUsage(u, app)).length, pct = users.length > 0 ? (count/users.length*100) : 0;
                 return `<div class="text-sm"><div class="flex justify-between mb-1.5 font-bold"><span class="text-slate-600">${app}</span><span class="text-slate-900">${count}名</span></div><div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden"><div class="bg-blue-600 h-full animate-bar" style="width:${pct}%"></div></div></div>`;
             }).join('');
         }
@@ -509,7 +519,7 @@
                     <td class="px-6 py-4 text-center"><span class="px-3 py-1 text-[10px] font-bold rounded-full border ${usageCls}">${dispUsage}</span></td>
                     <td class="px-6 py-4 text-right font-bold text-blue-600 text-base">${(dispActions || 0).toLocaleString()} <span class="text-[10px] font-normal text-slate-400">回</span></td>
                     <td class="px-6 py-4 text-right font-bold text-slate-800 text-base">${dispDays} <span class="text-[10px] font-normal text-slate-400">日</span></td>
-                    <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}${(u.appCounts||{})[a] ? ': ' + (u.appCounts||{})[a] + '回' : ''}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${u.appUsage[a] ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
+                    <td class="px-6 py-4 text-center"><div class="flex justify-center gap-3 text-base">${APP_LIST.map(a => `<span title="${a}${(u.appCounts||{})[a] ? ': ' + (u.appCounts||{})[a] + '回' : ''}" class="transition hover:scale-110"><i class="${FA_ICONS[a] || 'fa-solid fa-cube'} ${hasAppUsage(u, a) ? 'text-blue-600' : 'text-slate-200'}"></i></span>`).join('')}</div></td>
                 </tr>`;
             }).join('');
             document.getElementById('pagination-info').textContent = `${data.length}件中 ${data.length === 0 ? 0 : start + 1}〜${Math.min(start + state.itemsPerPage, data.length)}件を表示`;
