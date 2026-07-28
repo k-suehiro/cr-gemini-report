@@ -34,7 +34,7 @@
                   <i class="fa-solid fa-wand-magic-sparkles text-blue-600"></i> Gemini 利用状況 (直近28日間)
               </h1>
               <p id="last-update" class="text-[10px] text-slate-400 mt-1"></p>
-              <p class="text-[10px] text-slate-300 mt-0.5">v1.1.4</p>
+              <p class="text-[10px] text-slate-300 mt-0.5">v1.1.5</p>
             </div>
             <button onclick="loadData()" class="inline-flex items-center px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition">
                 <i class="fa-solid fa-rotate-right mr-2 text-slate-400"></i> キャッシュを読込
@@ -99,9 +99,26 @@
             <div class="p-6 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="flex items-center gap-3 flex-wrap">
                     <h3 class="text-lg font-bold text-slate-800">全ユーザー詳細 <span class="text-xs font-normal text-slate-400 ml-2">※名前クリックで詳細表示</span></h3>
-                    <div class="flex rounded-lg border border-slate-200 overflow-hidden text-[11px] font-bold shadow-sm">
-                        <button id="gmail-btn-all" onclick="setGmailMode('all')" class="px-3 py-1.5 transition bg-blue-600 text-white">Gmail含む</button>
-                        <button id="gmail-btn-nonGmail" onclick="setGmailMode('nonGmail')" class="px-3 py-1.5 transition bg-white text-slate-500 hover:bg-slate-50">Gmail除く</button>
+                    <div class="flex items-center gap-2 text-[11px] font-bold">
+                        <label for="app-mode-select" class="text-slate-500">集計アプリ:</label>
+                        <select id="app-mode-select" onchange="setAppMode(this.value)" class="border border-slate-300 rounded-lg px-3 py-1.5 bg-white text-slate-700 outline-none focus:border-blue-500 shadow-sm cursor-pointer">
+                            <option value="all">全アプリ（Gmail含む）</option>
+                            <option value="nonGmail">Gmail除く</option>
+                            <optgroup label="アプリ別">
+                                <option value="Gmail">Gmail</option>
+                                <option value="Google ドキュメント">Google ドキュメント</option>
+                                <option value="Google スプレッドシート">Google スプレッドシート</option>
+                                <option value="Google スライド">Google スライド</option>
+                                <option value="Google ドライブ">Google ドライブ</option>
+                                <option value="Google Meet">Google Meet</option>
+                                <option value="Studio">Studio</option>
+                                <option value="Google Vids">Google Vids</option>
+                                <option value="Gemini App">Gemini App</option>
+                                <option value="workflows">workflows</option>
+                                <option value="chat">chat</option>
+                                <option value="calendar">calendar</option>
+                            </optgroup>
+                        </select>
                     </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-4 text-sm">
@@ -177,7 +194,7 @@
             return dept.replace('プロダクションセンター', 'CRP');
         }
 
-        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization', gmailMode: 'all' };
+        let state = { parsedUsers: [], filteredData: [], currentPage: 1, itemsPerPage: 30, sort: { key: 'daysUsed', direction: 'desc' }, deptStats: {}, activeDept: '', deptViewMode: 'utilization', appMode: 'all' };
 
         window.onload = () => { loadData(); };
 
@@ -191,7 +208,8 @@
                     state.parsedUsers = enriched;
                     state.filteredData = [...enriched];
                     state.activeDept = '';
-                    state.gmailMode = 'all';
+                    state.appMode = 'all';
+                    document.getElementById('app-mode-select').value = 'all';
                     if (res.updatedAt) document.getElementById('last-update').textContent = '最終集計(JST): ' + res.updatedAt;
                     if (res.period) document.getElementById('period-display').textContent = `集計期間: ${res.period}`;
                     applySort();
@@ -216,19 +234,19 @@
 
         function applySort() {
             const k = state.sort.key, d = state.sort.direction === 'asc' ? 1 : -1;
-            const ng = state.gmailMode === 'nonGmail';
+            const top10Threshold = getModeTop10Threshold();
             state.filteredData.sort((a, b) => {
                 let valA, valB;
                 if (k === 'totalActions') {
-                    valA = ng ? a.nonGmailActions : a.totalActions;
-                    valB = ng ? b.nonGmailActions : b.totalActions;
+                    valA = getUserMetrics(a, top10Threshold).actions;
+                    valB = getUserMetrics(b, top10Threshold).actions;
                 } else if (k === 'daysUsed') {
-                    valA = ng ? a.nonGmailDays : a.daysUsed;
-                    valB = ng ? b.nonGmailDays : b.daysUsed;
+                    valA = getUserMetrics(a, top10Threshold).days;
+                    valB = getUserMetrics(b, top10Threshold).days;
                 } else if (k === 'usage') {
                     const rank = { '高': 3, '中': 2, '低': 1, '未使用': 0 };
-                    valA = rank[ng ? a.nonGmailUsage : (a.daysUsed === 0 ? '未使用' : a.usage)] || 0;
-                    valB = rank[ng ? b.nonGmailUsage : (b.daysUsed === 0 ? '未使用' : b.usage)] || 0;
+                    valA = rank[getUserMetrics(a, top10Threshold).usage] || 0;
+                    valB = rank[getUserMetrics(b, top10Threshold).usage] || 0;
                 } else {
                     valA = a[k]; valB = b[k];
                 }
@@ -253,19 +271,18 @@
 
         function calcDeptStats() {
             const users = state.parsedUsers;
-            const ng = state.gmailMode === 'nonGmail';
+            const top10Threshold = getModeTop10Threshold();
             const deptStats = {};
             users.forEach(u => {
                 const dept = u.dept || '-';
                 if (!deptStats[dept]) deptStats[dept] = { total: 0, active: 0, high: 0, mid: 0, low: 0 };
                 deptStats[dept].total++;
-                const isActive = ng ? u.nonGmailActions > 0 : Object.entries(u.appUsage || {}).some(([app, used]) => app !== 'Gmail' && used);
-                const usage = ng ? u.nonGmailUsage : u.usage;
-                if (isActive) {
+                const metrics = getUserMetrics(u, top10Threshold);
+                if (metrics.actions > 0) {
                     deptStats[dept].active++;
-                    if (usage === '高') deptStats[dept].high++;
-                    else if (usage === '中') deptStats[dept].mid++;
-                    else if (usage === '低') deptStats[dept].low++;
+                    if (metrics.usage === '高') deptStats[dept].high++;
+                    else if (metrics.usage === '中') deptStats[dept].mid++;
+                    else if (metrics.usage === '低') deptStats[dept].low++;
                 }
             });
             state.deptStats = deptStats;
@@ -338,21 +355,51 @@
                 else if (nonGmailActions >= 5) nonGmailUsage = '中';
                 else if (nonGmailActions > 0) nonGmailUsage = '低';
                 const appCounts = {};
+                const appDays = {};
                 Object.values(u.dailyDetail || {}).forEach(apps => {
                     Object.entries(apps).forEach(([app, count]) => {
                         appCounts[app] = (appCounts[app] || 0) + count;
+                        if (count > 0) appDays[app] = (appDays[app] || 0) + 1;
                     });
                 });
-                return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage, appCounts };
+                return { ...u, nonGmailActions, nonGmailDays, nonGmailUsage, appCounts, appDays };
             });
         }
 
-        function setGmailMode(mode) {
-            state.gmailMode = mode;
-            ['all', 'nonGmail'].forEach(m => {
-                const btn = document.getElementById(`gmail-btn-${m}`);
-                if (btn) btn.className = `px-3 py-1.5 transition ${m === mode ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`;
-            });
+        function getModeTop10Threshold() {
+            if (state.appMode === 'all' || state.appMode === 'nonGmail') return 0;
+            const counts = state.parsedUsers
+                .map(u => (u.appCounts || {})[state.appMode] || 0)
+                .sort((a, b) => b - a);
+            return counts.length > 0 ? counts[Math.floor(counts.length * 0.1)] : 999;
+        }
+
+        function getUserMetrics(user, top10Threshold = getModeTop10Threshold()) {
+            if (state.appMode === 'all') {
+                const days = user.daysUsed || 0;
+                return { actions: user.totalActions || 0, days, usage: days === 0 ? '未使用' : user.usage };
+            }
+            if (state.appMode === 'nonGmail') {
+                return { actions: user.nonGmailActions, days: user.nonGmailDays, usage: user.nonGmailUsage };
+            }
+            const actions = (user.appCounts || {})[state.appMode] || 0;
+            const days = (user.appDays || {})[state.appMode] || 0;
+            let usage = '未使用';
+            if (actions >= 20 && actions >= top10Threshold) usage = '高';
+            else if (actions >= 5) usage = '中';
+            else if (actions > 0) usage = '低';
+            return { actions, days, usage };
+        }
+
+        function getAppModeLabel() {
+            if (state.appMode === 'all') return '全アプリ';
+            if (state.appMode === 'nonGmail') return 'Gmail除く';
+            return state.appMode;
+        }
+
+        function setAppMode(mode) {
+            state.appMode = mode;
+            state.currentPage = 1;
             calcDeptStats();
             applySort();
             renderDeptSummary();
@@ -393,7 +440,7 @@
             document.getElementById('dept-summary').innerHTML = `
                 <div class="flex items-center gap-2 mb-3 flex-wrap">
                     <i class="fa-solid fa-building text-slate-400 text-xs"></i>
-                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門別 Gmail除き</span>
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門別 ${getAppModeLabel()}</span>
                     <div class="flex rounded-lg border border-slate-200 overflow-hidden text-[11px] font-bold">
                         <button onclick="setDeptViewMode('utilization')" class="px-3 py-1 transition ${mode === 'utilization' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}">利用率</button>
                         <button onclick="setDeptViewMode('retention')" class="px-3 py-1 transition ${mode === 'retention' ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}">定着率</button>
@@ -403,10 +450,10 @@
                     ${state.activeDept ? `<button onclick="filterByDept('')" class="ml-auto text-[11px] text-blue-500 hover:text-blue-700 font-medium flex items-center gap-1"><i class="fa-solid fa-xmark text-xs"></i> 絞込解除</button>` : ''}
                 </div>
                 <div id="dept-tips" class="hidden mb-3 p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-slate-600 space-y-2">
-                    <p class="font-bold text-blue-700">Gmail含む / Gmail除く</p>
-                    <p>全ユーザー詳細のボタンで切り替えると、部門別の集計も連動して再計算されます。<br><b>Gmail除く</b>モードでは、各ユーザーのGmail以外のアクション数を元に活用レベルを再判定します。</p>
+                    <p class="font-bold text-blue-700">集計アプリの切り替え</p>
+                    <p>全ユーザー詳細のセレクターで切り替えると、利用回数・使用日数・活用レベル・部門別集計が連動して再計算されます。</p>
                     <p class="font-bold text-blue-700 pt-1">利用率の算出方式</p>
-                    <p>Gmail以外のアプリを <b>1回以上</b> 使ったユーザー数 ÷ 部門人数 × 100</p>
+                    <p>選択中の集計対象を <b>1回以上</b> 使ったユーザー数 ÷ 部門人数 × 100</p>
                     <p class="font-bold text-blue-700 pt-1">定着率の算出方式</p>
                     <p>各ユーザーの活用レベルに係数をかけて合計し、部門人数で割って算出します。</p>
                     <div class="grid grid-cols-4 gap-1 mt-1 text-center">
@@ -447,13 +494,14 @@
         }
 
         function renderTable() {
-            const ng = state.gmailMode === 'nonGmail';
             const data = state.filteredData, start = (state.currentPage - 1) * state.itemsPerPage;
             const paginatedData = data.slice(start, start + state.itemsPerPage);
+            const top10Threshold = getModeTop10Threshold();
             document.getElementById('table-body').innerHTML = paginatedData.map(u => {
-                const dispUsage = ng ? u.nonGmailUsage : (u.daysUsed === 0 ? '未使用' : u.usage);
-                const dispActions = ng ? u.nonGmailActions : u.totalActions;
-                const dispDays = ng ? u.nonGmailDays : u.daysUsed;
+                const metrics = getUserMetrics(u, top10Threshold);
+                const dispUsage = metrics.usage;
+                const dispActions = metrics.actions;
+                const dispDays = metrics.days;
                 const usageCls = dispUsage==='高'?'bg-rose-50 text-rose-600 border-rose-200':dispUsage==='中'?'bg-amber-50 text-amber-600 border-amber-200':dispUsage==='低'?'bg-emerald-50 text-emerald-600 border-emerald-200':'bg-slate-50 text-slate-400 border-slate-200';
                 return `
                 <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="openUserDetail('${u.email}')">
