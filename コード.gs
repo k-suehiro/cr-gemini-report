@@ -122,7 +122,7 @@ function refreshDashboardCache() {
 
   const usageCounts = Object.keys(empMap).map(email => userStats[email] ? userStats[email].total : 0).sort((a, b) => b - a);
   const top10Threshold = usageCounts.length > 0 ? usageCounts[Math.floor(usageCounts.length * 0.1)] : 999;
-  const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App'];
+  const APP_LIST = ['Gmail', 'Google ドキュメント', 'Google スプレッドシート', 'Google スライド', 'Google ドライブ', 'Google Meet', 'Studio', 'Google Vids', 'Gemini App', 'workflows', 'chat', 'calendar'];
 
   const rows = Object.keys(empMap).map(email => {
     const stats = userStats[email] || { total: 0, apps: {}, dates: { size: 0 }, daily: {} };
