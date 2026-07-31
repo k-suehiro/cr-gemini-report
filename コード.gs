@@ -2,6 +2,7 @@
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('index')
       .setTitle('Gemini 利用状況ダッシュボード')
+      .setFaviconUrl('https://i.postimg.cc/HsrJ9Fmx/icon-gemini-report.png')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 

@@ -1,6 +1,6 @@
 # Gemini 利用状況ダッシュボード
 
-**Version: v1.1.6**
+**Version: v1.1.7**
 
 Google Workspace の Audit Log（`gemini_in_workspace_apps`）を集計し、社内の Gemini 利用状況を可視化する Google Apps Script（GAS）Web アプリです。
 
@@ -29,6 +29,7 @@ Google Workspace の Audit Log（`gemini_in_workspace_apps`）を集計し、社
 ├── appsscript.json   # GAS プロジェクト設定
 ├── コード.gs         # メインスクリプト
 ├── index.html        # ダッシュボード UI
+├── icon-gemini-report.png # Web アプリ用アイコン画像
 ├── .clasp.json       # clasp 設定（git 管理外）
 ├── .claspignore      # clasp push 除外設定
 └── README.md
@@ -147,6 +148,10 @@ GAS プロジェクトで以下の 2 つの拡張サービスを有効化して�
 共有アカウント（api gemini、各種共有メールなど）も、社員 DB 上で区分が「共有」であればこのルールで除外されます。以前の「所属」「名前」による個別除外リストは廃止し、区分列に一本化しています。
 
 ## 変更履歴
+
+### v1.1.7（2026-07-31）
+
+- **専用アイコン**: Web アプリのファビコンと Chrome の「アプリとしてインストール」時に表示されるアイコンを追加
 
 ### v1.1.6（2026-07-28）
 
