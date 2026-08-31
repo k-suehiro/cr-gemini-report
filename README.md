@@ -1,6 +1,6 @@
 # Gemini 利用状況ダッシュボード
 
-**Version: v1.1.7**
+**Version: v1.2.0**
 
 Google Workspace の Audit Log（`gemini_in_workspace_apps`）を集計し、社内の Gemini 利用状況を可視化する Google Apps Script（GAS）Web アプリです。
 
@@ -93,8 +93,9 @@ GAS プロジェクトで以下の 2 つの拡張サービスを有効化して�
 
 `dailyUpdateFlow` は内部で次を順に実行します。
 
-1. `fetchYesterdayLogs` … 前日分の Audit Log を取得して `LogStorage` に追加
-2. `refreshDashboardCache` … `DashboardCache` シートを再集計
+1. `pruneOldLogStorage` … 集計期間外のログを `LogStorage` から削除
+2. `fetchYesterdayLogs` … 前日分の Audit Log を取得して `LogStorage` に追加
+3. `refreshDashboardCache` … `DashboardCache` シートを再集計
 
 トリガーの設定手順:
 
@@ -129,7 +130,7 @@ GAS プロジェクトで以下の 2 つの拡張サービスを有効化して�
 
 | シート | ダッシュボードから直接参照 | 役割 |
 |--------|--------------------------|------|
-| `LogStorage` | いいえ | Audit Log の生データを蓄積（追記のみ、古い行は削除しない） |
+| `LogStorage` | いいえ | Audit Log の生データ。直近 28 日分のみ保持（期間外は自動削除） |
 | `DashboardCache` | はい（`getDashboardData` 経由） | 直近 28 日分を集計したキャッシュ。ダッシュボードはこちらを表示 |
 
 ### 社員 DB と除外ルール
@@ -148,6 +149,12 @@ GAS プロジェクトで以下の 2 つの拡張サービスを有効化して�
 共有アカウント（api gemini、各種共有メールなど）も、社員 DB 上で区分が「共有」であればこのルールで除外されます。以前の「所属」「名前」による個別除外リストは廃止し、区分列に一本化しています。
 
 ## 変更履歴
+
+### v1.2.0（2026-08-31）
+
+- **LogStorage の自動整理**: 集計期間（直近 28 日）外のログを `pruneOldLogStorage` で削除し、蓄積を防止
+- **セル数上限対策**: 期間外データ削除に加え `deleteRows` で余分行を物理削除し、ワークブックの 1,000 万セル制限超過を防止
+- **更新フロー改善**: `dailyUpdateFlow` のログ取得前に期間外削除を実行（ステップ 0）
 
 ### v1.1.7（2026-07-31）
 

@@ -58,8 +58,51 @@ function getDashboardData() {
   return { users, updatedAt: String(updatedAt), period: String(periodStr) };
 }
 
+// 集計期間の開始日（当日を含む過去28日間）を返す
+function getAggregationStartDate() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 27, 0, 0, 0);
+}
+
+// LogStorage から集計期間外のログを削除する
+function pruneOldLogStorage() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const logSheet = ss.getSheetByName('LogStorage');
+  if (!logSheet) return 0;
+
+  const lastRow = logSheet.getLastRow();
+  if (lastRow <= 1) return 0;
+
+  const startDate = getAggregationStartDate();
+  const allData = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const filteredData = allData.filter(row => new Date(row[0]) >= startDate);
+  const deletedCount = allData.length - filteredData.length;
+  const dataEndRow = filteredData.length + 1;
+
+  if (deletedCount > 0) {
+    const header = logSheet.getRange(1, 1, 1, 4).getValues();
+    logSheet.clearContents();
+    logSheet.getRange(1, 1, 1, 4).setValues(header);
+    if (filteredData.length > 0) {
+      logSheet.getRange(2, 1, filteredData.length, 4).setValues(filteredData);
+    }
+    console.log(`LogStorage: 集計期間外のログ ${deletedCount} 件を削除しました`);
+  }
+
+  // clearContents だけでは行数が減らないため、余分行を削除してセル数上限を解放する
+  const maxRow = logSheet.getMaxRows();
+  if (maxRow > dataEndRow) {
+    logSheet.deleteRows(dataEndRow + 1, maxRow - dataEndRow);
+    console.log(`LogStorage: 余分行 ${maxRow - dataEndRow} 行を削除しました`);
+  }
+
+  return deletedCount;
+}
+
 // --- 3. 重い計算処理（JST時刻変換・詳細記録版） ---
 function refreshDashboardCache() {
+  pruneOldLogStorage();
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const logSheet = ss.getSheetByName('LogStorage');
   const cacheSheet = ss.getSheetByName('DashboardCache') || ss.insertSheet('DashboardCache');
@@ -90,8 +133,7 @@ function refreshDashboardCache() {
 
   if (lastRow > 1) {
     const allData = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 27, 0, 0, 0);
+    const startDate = getAggregationStartDate();
     
     allData.forEach(row => {
       const logDate = new Date(row[0]);
@@ -242,8 +284,12 @@ function fetchYesterdayLogs() {
 // --- 5. 1日1回の定期実行用メイン関数 ---
 function dailyUpdateFlow() {
   console.log("--- 定期更新フローを開始します ---");
-  
-  // 1. まず前日のログを取得して LogStorage に追加
+
+  // 0. 先に期間外ログを削除（セル数上限超過を防ぐ）
+  console.log("ステップ0: 集計期間外のログを削除中...");
+  pruneOldLogStorage();
+
+  // 1. 前日のログを取得して LogStorage に追加
   console.log("ステップ1: 前日のログを取得中...");
   fetchYesterdayLogs(); 
   
